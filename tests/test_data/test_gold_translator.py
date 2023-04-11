@@ -222,26 +222,51 @@ def test_get_quantity_value():
     value = translator._get_quantity_value(entity, "arbitraryField")
     assert value is not None
     assert value.has_raw_value == "7"
-    assert value.has_numeric_value is None
+    assert value.has_numeric_value == 7.0
     assert value.has_unit is None
 
-    entity = {"arbitraryField": 0}
-    value = translator._get_quantity_value(entity, "arbitraryField", unit="meters")
+    entity = {"arbitraryField": 7}
+    value = translator._get_quantity_value(entity, "arbitraryField", unit="kelvin")
     assert value is not None
-    assert value.has_raw_value == "0"
-    assert value.has_numeric_value == 0.0
+    assert value.has_raw_value == "7"
+    assert value.has_numeric_value == 7.0
+    assert value.has_unit == "kelvin"
+
+    entity = {"depthInMeters": 62}
+    value = translator._get_quantity_value(entity, "depthInMeters")
+    assert value is not None
+    assert value.has_raw_value == "62"
+    assert value.has_numeric_value == 62.0
     assert value.has_unit == "meters"
 
-    entity = {"arbitraryField": 8}
-    value = translator._get_quantity_value(entity, "arbitraryField", unit="meters")
+    entity = {"volume": "2 litres"}
+    value = translator._get_quantity_value(entity, "volume")
     assert value is not None
-    assert value.has_raw_value == "8"
+    assert value.has_raw_value == "2 litres"
+    assert value.has_numeric_value == 2.0
+    assert value.has_unit == "litre"
+
+    entity = {"volume": "4 cm^3, 2 litres"}
+    value = translator._get_quantity_value(entity, "volume")
+    assert value is not None
+    assert value.has_raw_value == "4 cm^3, 2 litres"
+    assert value.has_numeric_value == 4.0
+    assert value.has_unit == "cubic centimetre"
+
+    entity = {"temperature": "8 C"}
+    value = translator._get_quantity_value(entity, "temperature")
+    assert value is not None
+    assert value.has_raw_value == "8 C"
     assert value.has_numeric_value == 8.0
-    assert value.has_unit == "meters"
+    assert value.has_unit == "degree celcius"
 
-    entity = {"arbitraryField": None}
-    value = translator._get_quantity_value(entity, "arbitraryField", unit="meters")
-    assert value is None
+    entity = {"temperature": "8±2 C"}
+    value = translator._get_quantity_value(entity, "temperature")
+    assert value is not None
+    assert value.has_raw_value == "8±2 C"
+    assert value.has_minimum_numeric_value == 6.0
+    assert value.has_maximum_numeric_value == 10.0
+    assert value.has_unit == "degree celcius"
 
 
 def test_get_text_value():

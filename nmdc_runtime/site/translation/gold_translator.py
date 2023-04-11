@@ -1,7 +1,11 @@
 import collections
 import re
+import logging
 from typing import Any, Callable, Dict, List, Optional, Union
 from nmdc_schema import nmdc
+from quantulum3 import parser
+
+logger = logging.getLogger(__name__)
 
 JSON_OBJECT = Dict[str, Any]
 
@@ -207,11 +211,12 @@ class GoldStudyTranslator(Translator):
         """Get any field of a GOLD entity object as a QuantityValue
 
         This method extracts any single field of a GOLD entity object (study, biosample, etc)
-        and if it is not `None` returns it as an `nmdc:QuantityValue`. A has_numeric_value will 
-        be inferred from the gold_field value in gold_entity. The inference is done only if the 
-        unit is meters. Support for other units will be added incrementally. A unit can optionally 
-        be provided, otherwise the unit will be `None`. If the value of the field is `None`,
-        `None` will be returned.
+        and if it is not `None` returns it as an `nmdc:QuantityValue`. A has_numeric_value will
+        be inferred for a field in the gold_entity object. Some quantity values are fully determined
+        based on predefined fields that have hardcoded units, while most others have their
+        the numeric portion and the unit portion of the field parsed out separately using the
+        quantulum package. A unit can optionally be provided, otherwise the unit will be `None`.
+        If the value of the field is `None`, `None` will be returned.
 
         :param gold_entity: GOLD entity object
         :param gold_field: Name of the field to extract
@@ -221,18 +226,64 @@ class GoldStudyTranslator(Translator):
         field_value = gold_entity.get(gold_field)
         if field_value is None:
             return None
-        return nmdc.QuantityValue(
-            has_raw_value=field_value,
-            has_numeric_value=nmdc.Double(field_value)
-            # handler for GOLD API fields returning field values
-            # in meters
-            if unit == "meters"
-            else None,
-            # TODO: in the future we will need better handling
-            # to parse out the numerical portion of the quantity value
-            # ex. temp might be 3 C, and we will need to parse out 3.0 from it
-            has_unit=unit,
-        )
+
+        quantity_value = nmdc.QuantityValue(has_raw_value=field_value)
+
+        # measurement values with predefined units
+        predefined_quantity_values = {
+            "altitudeInMeters": "meters",
+            "depthInMeters": "meters",
+            "subsurfaceDepthInMeters": "meters",
+        }
+
+        # harcoded unit discrepancies that quantulum cannot
+        # disambiguate between
+        unit_discrepancies = {
+            "coulomb": "degree celcius",
+            "degree angle coulumb": "degree celcius",
+        }
+
+        if unit:
+            quantity_value.has_unit = unit
+            
+        if gold_field in predefined_quantity_values.keys():
+            quantity_value.has_numeric_value = nmdc.Double(field_value)
+            quantity_value.has_unit = (
+                unit if unit else predefined_quantity_values[gold_field]
+            )
+
+            return quantity_value
+
+        quantities = parser.parse(str(field_value))
+
+        if len(quantities) > 0:
+            if len(quantities) > 1:
+                quantity_values = [q.surface for q in quantities]
+                logger.error(
+                    "quantulum detected the possibility of multiple quantity values: {}".format(
+                        ", ".join(map(str, quantity_values))
+                    )
+                )
+            # if there are multiple quantity values detected in a string
+            # consider only the first quantity value
+            quantity = quantities[0]
+            if quantity.uncertainty:
+                quantity_value.has_minimum_numeric_value = round(
+                    (quantity.value - quantity.uncertainty), ndigits=3
+                )
+                quantity_value.has_maximum_numeric_value = round(
+                    (quantity.value + quantity.uncertainty), ndigits=3
+                )
+            else:
+                quantity_value.has_numeric_value = quantity.value
+
+            if quantity.unit and quantity.unit.name != "dimensionless" and not unit:
+                if quantity.unit.name in unit_discrepancies:
+                    quantity_value.has_unit = unit_discrepancies[quantity.unit.name]
+                else:
+                    quantity_value.has_unit = quantity.unit.name
+
+        return quantity_value
 
     def _get_text_value(
         self, gold_entity: JSON_OBJECT, gold_field: str
