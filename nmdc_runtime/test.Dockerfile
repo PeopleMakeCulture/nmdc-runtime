@@ -28,11 +28,11 @@ RUN export DEBIAN_FRONTEND=noninteractive && \
 # Install requirements
 WORKDIR /code
 COPY ./requirements/main.txt /code/requirements.txt
-RUN pip install --no-cache-dir --upgrade -r /code/requirements.txt
+RUN pip install --no-cache-dir -r /code/requirements.txt
 
 # Add repository code
 COPY . /code
-RUN pip install --no-cache-dir --editable .[dev]
+RUN pip install --no-cache-dir --editable .
 
 # Ensure wait-for-it
 RUN chmod +x wait-for-it.sh
